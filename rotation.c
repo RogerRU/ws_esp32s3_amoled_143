@@ -380,15 +380,3 @@ void rotate_24bpp(uint8_t *src, uint8_t *dst, uint32_t x_start, uint32_t y_start
             break;
     }
 }
-
-
-void init_rotation_task(rotation_task_t *params)
-{
-    lcd_bus_lock_init(&params->copy_lock);
-    lcd_bus_lock_init(&params->tx_color_lock);
-    lcd_bus_event_init(&params->copy_task_exit);
-    lcd_bus_event_init(&params->swap_bufs);
-    lcd_bus_event_set(&params->swap_bufs);
-    lcd_bus_lock_init(&params->init_lock);
-    lcd_bus_lock_acquire(&params->init_lock, -1);
- }
