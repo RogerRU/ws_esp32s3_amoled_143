@@ -118,7 +118,7 @@ static void copy_pixels(void *dst, void *src, uint32_t x_start, uint32_t y_start
 static bool flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx)
 {
     rotation_task_t *params = (rotation_task_t *)user_ctx;
-    lcd_bus_event_set(&self->swap_bufs);
+    lcd_bus_event_set_from_isr(&params->swap_bufs);
     return true;
 }
 
