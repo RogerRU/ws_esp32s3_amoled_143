@@ -47,7 +47,6 @@
 void  amoled_lcd_init(void);
 void  amoled_touch_init(void);
 esp_err_t amoled_set_brightness(uint8_t percent);
-static bool amoled_notify_lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 static void amoled_lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 static void amoled_lvgl_rounder_cb(lv_event_t *e);
 static void amoled_lvgl_touch_cb(lv_indev_t *drv, lv_indev_data_t *data);
