@@ -106,6 +106,11 @@ void lcd_bus_lock_delete(lcd_bus_lock_t *lock)
 #define RGB_BUS_ROTATION_180  (2)
 #define RGB_BUS_ROTATION_270  (3)
 
+#define _LCD_MIN(v1, v2)     (v1) <= (v2) ? (v1) : (v2) 
+#define _LCD_MAX(v1, v2)     (v1) >= (v2) ? (v1) : (v2)
+
+#define _LCD_UNUSED(x)    (void*)(x)
+
 
 static void rotate_24bpp(uint8_t *src, uint8_t *dst, uint32_t x_start, uint32_t y_start,
                     uint32_t x_end, uint32_t y_end, uint32_t dst_width, uint32_t dst_height,
@@ -169,7 +174,7 @@ void lcd_bus_copy_task(void *params_in) {
     params ->err = spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO);
 
     if (params->err != 0) {
-        lcd_bus_lock_release(&self->init_lock);
+        lcd_bus_lock_release(&params->init_lock);
 
         return;
     }
@@ -190,7 +195,7 @@ void lcd_bus_copy_task(void *params_in) {
     params ->err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &params->io_handle);
 
     if (params->err != 0) {
-        lcd_bus_lock_release(&self->init_lock);
+        lcd_bus_lock_release(&params->init_lock);
 
         return;
     }
@@ -225,13 +230,13 @@ void lcd_bus_copy_task(void *params_in) {
 
         if (params->update_brightness) {
             // wait until current buffer transmit is done.
-            lcd_bus_event_wait(&self->swap_bufs);
+            lcd_bus_event_wait(&params->swap_bufs);
             params->update_brightness = 0;
             if (params->percent > 100) params->percent = 100;
 
             esp_lcd_panel_io_tx_param(io_handle, 0x02005100, (uint8_t[]){0xFF * params->percent / 100}, 1);
             vTaskDelay(20);
-            exit = lcd_bus_event_isset(&self->copy_task_exit);
+            exit = lcd_bus_event_isset(&params->copy_task_exit);
             continue;
         }
 
@@ -254,20 +259,20 @@ void lcd_bus_copy_task(void *params_in) {
         if (last_update) {
             // we want to make sure that the buffer has been fully written
             // before flip flopping the sending buffers
-            lcd_bus_event_wait(&self->swap_bufs);
+            lcd_bus_event_wait(&params->swap_bufs);
             size_t size = AMOLED_LCD_H_RES * AMOLED_LCD_V_RES * lv_color_format_get_size(lv_display_get_color_format(params->disp));
             esp_lcd_panel_io_tx_color(params->io_handle, LCD_CMD_RAMWR, idle_fb, size);
-            lcd_bus_event_clear(&self->swap_bufs);
-            self->idle_fb = self->active_fb;
-            self->active_fb = idle_fb;
+            lcd_bus_event_clear(&params->swap_bufs);
+            params->idle_fb = params->active_fb;
+            params->active_fb = idle_fb;
 
             // we need to keep the 2 full buffers in sync so we have to copy
             // the data from the buffer that is transmitting to the buffer that
             // is now idle
-            memcpy(self->idle_fb, self->active_fb, size);
+            memcpy(params->idle_fb, params->active_fb, size);
         }
 
-        exit = lcd_bus_event_isset(&self->copy_task_exit);
+        exit = lcd_bus_event_isset(&params->copy_task_exit);
     }
 
 }
@@ -286,21 +291,21 @@ void copy_pixels(void *dst, void *src, uint32_t x_start, uint32_t y_start,
         uint8_t rotate)
 {
     if (rotate == RGB_BUS_ROTATION_0) {
-        rotate_24bpp(src, dst, MIN(x_start, dst_width), MIN(y_start, dst_height),
-                MIN(x_end, dst_width), MIN(y_end, dst_height),
+        rotate_24bpp(src, dst, _LCD_MIN(x_start, dst_width), _LCD_MIN(y_start, dst_height),
+                _LCD_MIN(x_end, dst_width), _LCD_MIN(y_end, dst_height),
                 dst_width, dst_height, rotate);
     } else {
         y_end += 1; // removes black lines between blocks
         if (rotate == RGB_BUS_ROTATION_90 || rotate == RGB_BUS_ROTATION_270) {
-            x_start = MIN(x_start, dst_height);
-            x_end = MIN(x_end, dst_height);
-            y_start = MIN(y_start, dst_width);
-            y_end = MIN(y_end, dst_width);
+            x_start = _LCD_MIN(x_start, dst_height);
+            x_end = _LCD_MIN(x_end, dst_height);
+            y_start = _LCD_MIN(y_start, dst_width);
+            y_end = _LCD_MIN(y_end, dst_width);
         } else {
-            x_start = MIN(x_start, dst_width);
-            x_end = MIN(x_end, dst_width);
-            y_start = MIN(y_start, dst_height);
-            y_end = MIN(y_end, dst_height);
+            x_start = _LCD_MIN(x_start, dst_width);
+            x_end = _LCD_MIN(x_end, dst_width);
+            y_start = _LCD_MIN(y_start, dst_height);
+            y_end = _LCD_MIN(y_end, dst_height);
         }
 
         rotate_24bpp(src, dst, x_start, y_start, x_end, y_end, dst_width, dst_height, rotate);
@@ -321,7 +326,7 @@ void rotate_24bpp(uint8_t *src, uint8_t *dst, uint32_t x_start, uint32_t y_start
     switch (rotate) {
         case RGB_BUS_ROTATION_0:
             dst += ((y_start * dst_width + x_start) * bytes_per_pixel);
-            if(x_start == 0 && x_end == (dst_width - 1) && !lcd565_dither) {
+            if(x_start == 0 && x_end == (dst_width - 1)) {
                 memcpy(dst, src, dst_width * (y_end - y_start + 1) * bytes_per_pixel);
             } else {
                 uint32_t src_bytes_per_line = (x_end - x_start + 1) * bytes_per_pixel;
@@ -346,9 +351,9 @@ void rotate_24bpp(uint8_t *src, uint8_t *dst, uint32_t x_start, uint32_t y_start
 
         // MIRROR_X MIRROR_Y
         case RGB_BUS_ROTATION_180:
-            LCD_UNUSED(j);
-            LCD_UNUSED(src_bytes_per_line);
-            LCD_UNUSED(offset);
+            _LCD_UNUSED(j);
+            _LCD_UNUSED(src_bytes_per_line);
+            _LCD_UNUSED(offset);
 
             for (int y = y_start; y < y_end; y++) {
                 i = ((dst_height - 1 - y) * dst_width + (dst_width - 1 - x_start)) * 3;
@@ -373,10 +378,10 @@ void rotate_24bpp(uint8_t *src, uint8_t *dst, uint32_t x_start, uint32_t y_start
             break;
 
         default:
-            LCD_UNUSED(i);
-            LCD_UNUSED(j);
-            LCD_UNUSED(src_bytes_per_line);
-            LCD_UNUSED(offset);
+            _LCD_UNUSED(i);
+            _LCD_UNUSED(j);
+            _LCD_UNUSED(src_bytes_per_line);
+            _LCD_UNUSED(offset);
             break;
     }
 }
