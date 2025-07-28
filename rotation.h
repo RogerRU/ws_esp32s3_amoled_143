@@ -7,35 +7,6 @@
 
 #ifndef __ROTATION_H__
     #define __ROTATION_H__
-    
-    typedef struct rotation_task_t {
-        lcd_bus_lock_t copy_lock;
-        lcd_bus_event_t copy_task_exit;
-        lcd_bus_lock_t tx_color_lock;
-        lcd_bus_event_t swap_bufs;
-        lcd_bus_lock_t init_lock;
-
-        TaskHandle_t copy_task_handle;
-
-        int x_start;
-        int y_start;
-        int x_end;
-        int y_end;
-
-        uint16_t width;
-        uint16_t height;
-
-        uint8_t rotation: 2;
-        uint8_t last_update: 1;
-        uint8_t update_brightness: 1;
-        uint8_t percent;
-
-        uint8_t *active_fb;
-        uint8_t *idle_fb;
-        uint8_t *partial_buf;
-    
-    } rotation_task_t;    
-    
 
     typedef struct _lcd_bus_lock_t {
         SemaphoreHandle_t handle;
